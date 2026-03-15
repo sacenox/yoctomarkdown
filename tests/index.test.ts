@@ -44,4 +44,37 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     expect(res).toContain("Heading");
     expect(res).toContain("Some **text**");
   });
+
+  test("should handle character by character streaming", () => {
+    const markdown =
+      "# Title\n\nThis is a **test** of *character* streaming.\n\n- item 1\n- item 2\n";
+    const highlighter = createHighlighter({ theme: "none" });
+    let res = "";
+    for (const char of markdown) {
+      res += highlighter.write(char);
+    }
+    res += highlighter.end();
+
+    const expected = highlightSync(markdown, { theme: "none" });
+    expect(res).toBe(expected);
+  });
+
+  test("should handle random chunk sizes", () => {
+    const markdown =
+      "```javascript\nconst x = 1;\n```\n\n# Heading 2\n\nSome text with `code`.\n> Blockquote here\n\n1. One\n2. Two\n";
+    const highlighter = createHighlighter({ theme: "none" });
+    let res = "";
+
+    // Split into random chunks
+    let i = 0;
+    while (i < markdown.length) {
+      const chunkSize = Math.floor(Math.random() * 10) + 1;
+      res += highlighter.write(markdown.slice(i, i + chunkSize));
+      i += chunkSize;
+    }
+    res += highlighter.end();
+
+    const expected = highlightSync(markdown, { theme: "none" });
+    expect(res).toBe(expected);
+  });
 });
