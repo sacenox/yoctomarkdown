@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
     "@types/bun": "latest",
