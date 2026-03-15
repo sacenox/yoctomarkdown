@@ -1,4 +1,4 @@
-import { Theme, themes } from "./themes";
+import { type Theme, themes } from "./themes";
 
 export interface Options {
   theme?: "16" | "256" | "truecolor" | "minimal" | "none" | Theme;
@@ -15,9 +15,9 @@ export interface Highlighter {
 function resolveTheme(options?: Options): Theme {
   const t = options?.theme || "16";
   if (typeof t === "string") {
-    return themes[t] || themes["none"];
+    return (themes[t] || themes["none"]) as Theme;
   }
-  return t;
+  return t as Theme;
 }
 
 export function highlightSync(input: string, options?: Options): string {
@@ -103,24 +103,24 @@ export function createHighlighter(options?: Options): Highlighter {
 
     const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
     if (headingMatch) {
-      const hashes = headingMatch[1];
-      const text = headingMatch[2];
+      const hashes = headingMatch[1]!;
+      const text = headingMatch[2]!;
       return theme.heading(`${hashes} ${parseInline(text)}`);
     }
 
     const bqMatch = line.match(/^(>\s+)(.*)$/);
     if (bqMatch) {
-      return theme.blockquote(bqMatch[1]) + parseInline(bqMatch[2]);
+      return theme.blockquote(bqMatch[1]!) + parseInline(bqMatch[2]!);
     }
 
     const ulMatch = line.match(/^([-*]\s+)(.*)$/);
     if (ulMatch) {
-      return theme.listMarker(ulMatch[1]) + parseInline(ulMatch[2]);
+      return theme.listMarker(ulMatch[1]!) + parseInline(ulMatch[2]!);
     }
 
     const olMatch = line.match(/^(\d+\.\s+)(.*)$/);
     if (olMatch) {
-      return theme.listMarker(olMatch[1]) + parseInline(olMatch[2]);
+      return theme.listMarker(olMatch[1]!) + parseInline(olMatch[2]!);
     }
 
     return parseInline(line);

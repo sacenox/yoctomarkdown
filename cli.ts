@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs } from "util";
-import { highlightSync, createHighlighter, Options } from "./index";
+import { highlightSync, createHighlighter, type Options } from "./index";
 import { readFileSync } from "fs";
 
 const { values, positionals } = parseArgs({
@@ -54,7 +54,7 @@ const highlighter = createHighlighter(options);
 
 async function run() {
   if (positionals.length > 0) {
-    const file = positionals[0];
+    const file = positionals[0] as string;
     try {
       const content = readFileSync(file, "utf8");
       process.stdout.write(highlighter.write(content));
