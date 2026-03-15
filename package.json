@@ -18,7 +18,7 @@
     "yoctocolors": "^2.1.2"
   },
   "bin": {
-    "yoctomarkdown": "./src/cli.ts"
+    "yoctomarkdown": "src/cli.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
