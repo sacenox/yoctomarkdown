@@ -15,7 +15,7 @@ export interface Highlighter {
 function resolveTheme(options?: Options): Theme {
   const t = options?.theme || "16";
   if (typeof t === "string") {
-    return (themes[t] || themes["none"]) as Theme;
+    return (themes[t] || themes.none) as Theme;
   }
   return t as Theme;
 }
@@ -32,21 +32,20 @@ export function createHighlighter(options?: Options): Highlighter {
   let inCodeBlock = false;
 
   function parseInline(text: string): string {
-    
     let result = "";
     let i = 0;
     while (i < text.length) {
       if (text.startsWith("`", i) && !text.startsWith("``", i)) {
-        let end = text.indexOf("`", i + 1);
+        const end = text.indexOf("`", i + 1);
         if (end !== -1) {
           result += theme.code(`\`${text.slice(i + 1, end)}\``);
           i = end + 1;
           continue;
         }
       }
-      
+
       if (text.startsWith("**", i)) {
-        let end = text.indexOf("**", i + 2);
+        const end = text.indexOf("**", i + 2);
         if (end !== -1) {
           result += theme.bold(`**${text.slice(i + 2, end)}**`);
           i = end + 2;
@@ -55,7 +54,7 @@ export function createHighlighter(options?: Options): Highlighter {
       }
 
       if (text.startsWith("*", i) && !text.startsWith("**", i)) {
-        let end = text.indexOf("*", i + 1);
+        const end = text.indexOf("*", i + 1);
         if (end !== -1 && !text.startsWith("**", end)) {
           result += theme.italic(`*${text.slice(i + 1, end)}*`);
           i = end + 1;
@@ -64,11 +63,13 @@ export function createHighlighter(options?: Options): Highlighter {
       }
 
       if (text.startsWith("[", i)) {
-        let bracketEnd = text.indexOf("]", i + 1);
+        const bracketEnd = text.indexOf("]", i + 1);
         if (bracketEnd !== -1 && text.charAt(bracketEnd + 1) === "(") {
-          let parenEnd = text.indexOf(")", bracketEnd + 2);
+          const parenEnd = text.indexOf(")", bracketEnd + 2);
           if (parenEnd !== -1) {
-            result += theme.link(`[${text.slice(i + 1, bracketEnd)}](${text.slice(bracketEnd + 2, parenEnd)})`);
+            result += theme.link(
+              `[${text.slice(i + 1, bracketEnd)}](${text.slice(bracketEnd + 2, parenEnd)})`,
+            );
             i = parenEnd + 1;
             continue;
           }
@@ -78,11 +79,11 @@ export function createHighlighter(options?: Options): Highlighter {
       result += text[i];
       i++;
     }
-    
+
     return result;
   }
 
-  function parseLine(line: string, isLastLine: boolean): string {
+  function parseLine(line: string, _isLastLine: boolean): string {
     if (inCodeBlock) {
       if (line.trim().startsWith("```")) {
         inCodeBlock = false;
@@ -103,24 +104,24 @@ export function createHighlighter(options?: Options): Highlighter {
 
     const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
     if (headingMatch) {
-      const hashes = headingMatch[1]!;
-      const text = headingMatch[2]!;
+      const hashes = headingMatch[1] ?? "";
+      const text = headingMatch[2] ?? "";
       return theme.heading(`${hashes} ${parseInline(text)}`);
     }
 
     const bqMatch = line.match(/^(>\s+)(.*)$/);
     if (bqMatch) {
-      return theme.blockquote(bqMatch[1]!) + parseInline(bqMatch[2]!);
+      return theme.blockquote(bqMatch[1] ?? "") + parseInline(bqMatch[2] ?? "");
     }
 
     const ulMatch = line.match(/^([-*]\s+)(.*)$/);
     if (ulMatch) {
-      return theme.listMarker(ulMatch[1]!) + parseInline(ulMatch[2]!);
+      return theme.listMarker(ulMatch[1] ?? "") + parseInline(ulMatch[2] ?? "");
     }
 
     const olMatch = line.match(/^(\d+\.\s+)(.*)$/);
     if (olMatch) {
-      return theme.listMarker(olMatch[1]!) + parseInline(olMatch[2]!);
+      return theme.listMarker(olMatch[1] ?? "") + parseInline(olMatch[2] ?? "");
     }
 
     return parseInline(line);
@@ -128,13 +129,17 @@ export function createHighlighter(options?: Options): Highlighter {
 
   return {
     write(chunk: string | Uint8Array): string {
-      const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      const text =
+        typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
       buffer += text;
-      
+
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
-      
-      return lines.map((line) => parseLine(line, false)).join("\n") + (lines.length > 0 ? "\n" : "");
+
+      return (
+        lines.map((line) => parseLine(line, false)).join("\n") +
+        (lines.length > 0 ? "\n" : "")
+      );
     },
     end(): string {
       if (buffer.length > 0) {
@@ -143,6 +148,6 @@ export function createHighlighter(options?: Options): Highlighter {
         return out;
       }
       return "";
-    }
+    },
   };
 }

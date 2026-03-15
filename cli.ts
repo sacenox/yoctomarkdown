@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { parseArgs } from "util";
-import { highlightSync, createHighlighter, type Options } from "./index";
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+import { createHighlighter, type Options } from "./index";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -38,7 +38,7 @@ if (wrapVal === "auto" || wrapVal === "0") {
   wordWrap = wrapVal === "auto" ? "auto" : 0;
 } else {
   const n = parseInt(wrapVal, 10);
-  if (isNaN(n) || n < 0) {
+  if (Number.isNaN(n) || n < 0) {
     console.error(`Invalid wrap value: ${wrapVal}`);
     process.exit(1);
   }
@@ -46,7 +46,7 @@ if (wrapVal === "auto" || wrapVal === "0") {
 }
 
 const options: Options = {
-  theme: themeName as any,
+  theme: themeName as Options["theme"],
   wordWrap,
 };
 
@@ -59,8 +59,10 @@ async function run() {
       const content = readFileSync(file, "utf8");
       process.stdout.write(highlighter.write(content));
       process.stdout.write(highlighter.end());
-    } catch (err: any) {
-      console.error(`Error reading file: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(
+        `Error reading file: ${err instanceof Error ? err.message : String(err)}`,
+      );
       process.exit(1);
     }
   } else {

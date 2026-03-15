@@ -1,2 +1,5 @@
 - [spec.md](spec.md) is maintained by the user, only edit when asked directly by the user. It contains the specification for the project. Use it as the source of truth
 - Run `bun run check` before committing to run jscpd, knip, and typescript typecheck.
+- Run `bun run format` to format code using prettier.
+- Clean temporary files before commiting.
+- Use convential commits message formatting.

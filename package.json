@@ -4,10 +4,12 @@
   "type": "module",
   "private": true,
   "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
     "@types/bun": "latest",
     "husky": "^9.1.7",
     "jscpd": "^4.0.8",
-    "knip": "^5.86.0"
+    "knip": "^5.86.0",
+    "prettier": "^3.8.1"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
@@ -22,7 +24,10 @@
     "typecheck": "tsc --noEmit",
     "knip": "knip",
     "jscpd": "jscpd . --ignore \"node_modules/**\"",
-    "check": "bun run typecheck && bun run knip && bun run jscpd",
-    "prepare": "husky"
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run knip && bun run jscpd",
+    "prepare": "husky",
+    "lint": "biome lint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   }
 }
