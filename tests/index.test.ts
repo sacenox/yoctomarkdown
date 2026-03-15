@@ -32,10 +32,107 @@ describe("Programmatic Usage: highlightSync", () => {
   });
 });
 
+function renderTerminalOutput(
+  output: string,
+  columns = Number.POSITIVE_INFINITY,
+) {
+  const screen: string[][] = [[]];
+  let row = 0;
+  let column = 0;
+  let savedCursor: { row: number; column: number } | null = null;
+
+  function ensureRow(targetRow: number) {
+    while (screen.length <= targetRow) {
+      screen.push([]);
+    }
+  }
+
+  function writeChar(char: string) {
+    if (column >= columns) {
+      row += 1;
+      column = 0;
+    }
+
+    ensureRow(row);
+    if (!screen[row]) {
+      screen[row] = [];
+    }
+    const currentLine = screen[row];
+    if (!currentLine) {
+      return;
+    }
+    currentLine[column] = char;
+    column += 1;
+  }
+
+  for (let i = 0; i < output.length; i += 1) {
+    const rest = output.slice(i);
+
+    if (rest.startsWith("\x1b7")) {
+      savedCursor = { row, column };
+      i += 1;
+      continue;
+    }
+
+    if (rest.startsWith("\x1b8")) {
+      if (savedCursor) {
+        row = savedCursor.row;
+        column = savedCursor.column;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (rest.startsWith("\x1b[J")) {
+      ensureRow(row);
+      screen[row] = (screen[row] ?? []).slice(0, column);
+      for (let clearRow = row + 1; clearRow < screen.length; clearRow += 1) {
+        screen[clearRow] = [];
+      }
+      i += 2;
+      continue;
+    }
+
+    if (rest.startsWith("\x1b[2K")) {
+      ensureRow(row);
+      screen[row] = [];
+      i += 3;
+      continue;
+    }
+
+    if (rest.startsWith("\x1b[1A")) {
+      row = Math.max(0, row - 1);
+      i += 3;
+      continue;
+    }
+
+    const char = output[i];
+    if (char === "\n") {
+      row += 1;
+      column = 0;
+      ensureRow(row);
+      continue;
+    }
+
+    if (char === "\r") {
+      column = 0;
+      continue;
+    }
+
+    if (char !== undefined && char !== "\x1b") {
+      writeChar(char);
+    }
+  }
+
+  return screen
+    .map((line) => line.join("").replace(/\s+$/u, ""))
+    .join("\n")
+    .replace(/\n+$/u, "");
+}
+
 function expectStreamMatch(res: string, markdown: string) {
   const expected = highlightSync(markdown, { theme: "none" });
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: clear line ansi escape
-  expect(res.replace(/[^\n]*\x1b\[2K\r/g, "")).toBe(expected);
+  expect(renderTerminalOutput(res)).toBe(renderTerminalOutput(expected));
 }
 
 describe("Programmatic Usage: createHighlighter (Streaming)", () => {
@@ -82,33 +179,20 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     expectStreamMatch(res, markdown);
   });
 
-  test("should clear multiple lines when wrapped", () => {
-    // Mock columns
-    const originalColumns = process.stdout.columns;
-    Object.defineProperty(process.stdout, "columns", {
-      value: 10,
-      configurable: true,
-    });
+  test("should redraw wrapped partial lines after an external prefix", () => {
+    const prefix = "◆ ";
+    const markdown =
+      "No `\\x1b[2K` or `\\r` sequences in the streamed text. The ANSI colour codes remain (intentional — those are static style codes from yoctocolors, not cursor-control sequences).\n";
+    const splitAt = 134;
 
     const highlighter = createHighlighter({ theme: "none" });
-    // 25 chars, columns = 10, so it takes 3 visual lines
-    const chunk1 = "1234567890123456789012345";
-    const chunk2 = "67890\n";
-
-    let res = highlighter.write(chunk1);
-    res += highlighter.write(chunk2);
+    let res = prefix;
+    res += highlighter.write(markdown.slice(0, splitAt));
+    res += highlighter.write(markdown.slice(splitAt));
     res += highlighter.end();
 
-    // The first chunk is written, then cleared. Since it takes 3 lines,
-    // clear sequence should have \x1b[1A\x1b[2K repeated twice.
-    expect(res).toContain("\x1b[1A\x1b[2K\x1b[1A\x1b[2K");
-
-    // Restore
-    if (originalColumns !== undefined) {
-      Object.defineProperty(process.stdout, "columns", {
-        value: originalColumns,
-        configurable: true,
-      });
-    }
+    expect(renderTerminalOutput(res, 120)).toBe(
+      renderTerminalOutput(`${prefix}${markdown}`, 120),
+    );
   });
 });

@@ -128,7 +128,14 @@ export function createHighlighter(options?: Options): Highlighter {
   }
 
   let hasPartial = false;
-  let partialLength = 0;
+
+  function redrawPartialPrefix(): string {
+    return hasPartial ? "\x1b8\x1b[J" : "";
+  }
+
+  function renderPartial(line: string, isPartial: boolean): string {
+    return `\x1b7${parseLine(line, isPartial)}`;
+  }
 
   return {
     write(chunk: string | Uint8Array): string {
@@ -139,30 +146,17 @@ export function createHighlighter(options?: Options): Highlighter {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      let out = "";
-      if (hasPartial) {
-        const columns =
-          typeof process !== "undefined" && process.stdout?.columns
-            ? process.stdout.columns
-            : 80;
-        const linesToClear = Math.ceil(partialLength / columns) || 1;
-        out += "\x1b[2K\r";
-        if (linesToClear > 1) {
-          out += "\x1b[1A\x1b[2K".repeat(linesToClear - 1);
-        }
-      }
+      let out = redrawPartialPrefix();
 
       if (lines.length > 0) {
         out += `${lines.map((line) => parseLine(line, false)).join("\n")}\n`;
       }
 
       if (buffer.length > 0) {
-        out += parseLine(buffer, true);
+        out += renderPartial(buffer, true);
         hasPartial = true;
-        partialLength = buffer.length;
       } else {
         hasPartial = false;
-        partialLength = 0;
       }
 
       return out;
@@ -172,16 +166,9 @@ export function createHighlighter(options?: Options): Highlighter {
         const out = parseLine(buffer, false);
         buffer = "";
         if (hasPartial) {
-          const columns =
-            typeof process !== "undefined" && process.stdout?.columns
-              ? process.stdout.columns
-              : 80;
-          const linesToClear = Math.ceil(partialLength / columns) || 1;
-          let clearSeq = "\x1b[2K\r";
-          if (linesToClear > 1) {
-            clearSeq += "\x1b[1A\x1b[2K".repeat(linesToClear - 1);
-          }
-          return clearSeq + out;
+          const redrawPrefix = redrawPartialPrefix();
+          hasPartial = false;
+          return redrawPrefix + out;
         }
         return out;
       }
