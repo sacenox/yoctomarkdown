@@ -13,6 +13,8 @@ A small, fast, Bun-native Markdown highlighter for terminal output.
 
 ## Installation
 
+[npm package](https://www.npmjs.com/package/yoctomarkdown)
+
 ```bash
 bun add yoctomarkdown
 ```
