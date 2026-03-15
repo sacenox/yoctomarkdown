@@ -20,12 +20,11 @@ Steps to follow exactly:
    - ensure npm version does not already exist: `npm view <package-name>@<new-version> version`
      If either exists, stop and report.
 7. Update the `version` field in `package.json` to `<new-version>`.
-8. Run `bun run build`.
-9. Commit all staged and unstaged changes with message: `chore: release v<new-version>`.
-10. Create annotated tag: `git tag -a v<new-version> -m "<small-changelog>"`.
-11. Push explicitly to main and the exact tag:
+8. Commit all staged and unstaged changes with message: `chore: release v<new-version>`.
+9. Create annotated tag: `git tag -a v<new-version> -m "<small-changelog>"`.
+10. Push explicitly to main and the exact tag:
     - `git push origin main`
     - `git push origin v<new-version>`
-12. Post-push verification: run `npm view <package-name>@<new-version> version`.
+11. Post-push verification: run `npm view <package-name>@<new-version> version`.
     - If it already exists, report that publish already happened and do **not** ask user to publish again.
     - If it does not exist, run `npm publish`.
