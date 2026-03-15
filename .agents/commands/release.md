@@ -22,7 +22,7 @@ Steps to follow exactly:
 7. Update the `version` field in `package.json` to `<new-version>`.
 8. Run `bun run build`.
 9. Commit all staged and unstaged changes with message: `chore: release v<new-version>`.
-10. Create annotated tag: `git tag -a v<new-version> -m "<new-version>\n<small-changelog>"`.
+10. Create annotated tag: `git tag -a v<new-version> -m "<small-changelog>"`.
 11. Push explicitly to main and the exact tag:
     - `git push origin main`
     - `git push origin v<new-version>`
