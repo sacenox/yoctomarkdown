@@ -28,6 +28,7 @@
     "prepare": "husky",
     "lint": "biome lint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "bun test"
   }
 }
