@@ -83,17 +83,17 @@ export function createHighlighter(options?: Options): Highlighter {
     return result;
   }
 
-  function parseLine(line: string, _isLastLine: boolean): string {
+  function parseLine(line: string, isPartial: boolean): string {
     if (inCodeBlock) {
       if (line.trim().startsWith("```")) {
-        inCodeBlock = false;
+        if (!isPartial) inCodeBlock = false;
         return theme.codeBlock(line);
       }
       return theme.codeBlock(line);
     }
 
     if (line.trim().startsWith("```")) {
-      inCodeBlock = true;
+      if (!isPartial) inCodeBlock = true;
       return theme.codeBlock(line);
     }
 
@@ -127,6 +127,8 @@ export function createHighlighter(options?: Options): Highlighter {
     return parseInline(line);
   }
 
+  let hasPartial = false;
+
   return {
     write(chunk: string | Uint8Array): string {
       const text =
@@ -136,16 +138,29 @@ export function createHighlighter(options?: Options): Highlighter {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      return (
-        lines.map((line) => parseLine(line, false)).join("\n") +
-        (lines.length > 0 ? "\n" : "")
-      );
+      let out = "";
+      if (hasPartial) {
+        out += "\x1b[2K\r";
+      }
+
+      if (lines.length > 0) {
+        out += `${lines.map((line) => parseLine(line, false)).join("\n")}\n`;
+      }
+
+      if (buffer.length > 0) {
+        out += parseLine(buffer, true);
+        hasPartial = true;
+      } else {
+        hasPartial = false;
+      }
+
+      return out;
     },
     end(): string {
       if (buffer.length > 0) {
-        const out = parseLine(buffer, true);
+        const out = parseLine(buffer, false);
         buffer = "";
-        return out;
+        return (hasPartial ? "\x1b[2K\r" : "") + out;
       }
       return "";
     },

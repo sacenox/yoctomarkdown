@@ -30,5 +30,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "bun test"
+  },
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
   }
 }

@@ -32,6 +32,12 @@ describe("Programmatic Usage: highlightSync", () => {
   });
 });
 
+function expectStreamMatch(res: string, markdown: string) {
+  const expected = highlightSync(markdown, { theme: "none" });
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: clear line ansi escape
+  expect(res.replace(/[^\n]*\x1b\[2K\r/g, "")).toBe(expected);
+}
+
 describe("Programmatic Usage: createHighlighter (Streaming)", () => {
   test("should handle chunks without breaking output", () => {
     const highlighter = createHighlighter({ theme: "none" });
@@ -55,8 +61,7 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     }
     res += highlighter.end();
 
-    const expected = highlightSync(markdown, { theme: "none" });
-    expect(res).toBe(expected);
+    expectStreamMatch(res, markdown);
   });
 
   test("should handle random chunk sizes", () => {
@@ -74,7 +79,6 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     }
     res += highlighter.end();
 
-    const expected = highlightSync(markdown, { theme: "none" });
-    expect(res).toBe(expected);
+    expectStreamMatch(res, markdown);
   });
 });
