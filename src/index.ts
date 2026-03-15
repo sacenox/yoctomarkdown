@@ -128,6 +128,7 @@ export function createHighlighter(options?: Options): Highlighter {
   }
 
   let hasPartial = false;
+  let partialLength = 0;
 
   return {
     write(chunk: string | Uint8Array): string {
@@ -140,7 +141,15 @@ export function createHighlighter(options?: Options): Highlighter {
 
       let out = "";
       if (hasPartial) {
+        const columns =
+          typeof process !== "undefined" && process.stdout?.columns
+            ? process.stdout.columns
+            : 80;
+        const linesToClear = Math.ceil(partialLength / columns) || 1;
         out += "\x1b[2K\r";
+        if (linesToClear > 1) {
+          out += "\x1b[1A\x1b[2K".repeat(linesToClear - 1);
+        }
       }
 
       if (lines.length > 0) {
@@ -150,8 +159,10 @@ export function createHighlighter(options?: Options): Highlighter {
       if (buffer.length > 0) {
         out += parseLine(buffer, true);
         hasPartial = true;
+        partialLength = buffer.length;
       } else {
         hasPartial = false;
+        partialLength = 0;
       }
 
       return out;
@@ -160,7 +171,19 @@ export function createHighlighter(options?: Options): Highlighter {
       if (buffer.length > 0) {
         const out = parseLine(buffer, false);
         buffer = "";
-        return (hasPartial ? "\x1b[2K\r" : "") + out;
+        if (hasPartial) {
+          const columns =
+            typeof process !== "undefined" && process.stdout?.columns
+              ? process.stdout.columns
+              : 80;
+          const linesToClear = Math.ceil(partialLength / columns) || 1;
+          let clearSeq = "\x1b[2K\r";
+          if (linesToClear > 1) {
+            clearSeq += "\x1b[1A\x1b[2K".repeat(linesToClear - 1);
+          }
+          return clearSeq + out;
+        }
+        return out;
       }
       return "";
     },

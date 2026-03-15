@@ -81,4 +81,34 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
 
     expectStreamMatch(res, markdown);
   });
+
+  test("should clear multiple lines when wrapped", () => {
+    // Mock columns
+    const originalColumns = process.stdout.columns;
+    Object.defineProperty(process.stdout, "columns", {
+      value: 10,
+      configurable: true,
+    });
+
+    const highlighter = createHighlighter({ theme: "none" });
+    // 25 chars, columns = 10, so it takes 3 visual lines
+    const chunk1 = "1234567890123456789012345";
+    const chunk2 = "67890\n";
+
+    let res = highlighter.write(chunk1);
+    res += highlighter.write(chunk2);
+    res += highlighter.end();
+
+    // The first chunk is written, then cleared. Since it takes 3 lines,
+    // clear sequence should have \x1b[1A\x1b[2K repeated twice.
+    expect(res).toContain("\x1b[1A\x1b[2K\x1b[1A\x1b[2K");
+
+    // Restore
+    if (originalColumns !== undefined) {
+      Object.defineProperty(process.stdout, "columns", {
+        value: originalColumns,
+        configurable: true,
+      });
+    }
+  });
 });
