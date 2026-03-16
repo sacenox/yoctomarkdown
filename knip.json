@@ -1,1 +1,1 @@
-{ "ignoreBinaries": ["tsc", "src/cli.ts"] }
+{ "ignoreBinaries": ["tsc", "src/cli.ts"], "ignore": ["examples/**"] }
