@@ -193,10 +193,24 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     expectStreamMatch(res, markdown);
   });
 
+  test("should preserve text before streamed output (inline use)", () => {
+    // When a highlighter is used inline (e.g. "AI: " prefix already on
+    // the terminal line), the erase/redraw must not destroy the prefix.
+    const markdown = "Hello **world**";
+    const highlighter = createHighlighter({ theme: "none" });
+    let res = "AI: "; // simulates text already on terminal line
+    for (const ch of markdown) {
+      res += highlighter.write(ch);
+    }
+    res += highlighter.end();
+
+    expect(renderTerminalOutput(res)).toBe("AI: Hello **world**");
+  });
+
   test("should erase and redraw partial lines that wrap in terminal", () => {
-    // eraseLines uses \x1b[2K (erase whole line) + \x1b[1A (cursor up) +
-    // \x1b[G (cursor to col 1) — the standard log-update / ansi-escapes
-    // pattern. This is scroll-safe (all relative) unlike DECSC/DECRC.
+    // erasePreviousPartial uses cursor-back + \x1b[0J (erase from cursor
+    // to end of screen). This preserves any text before our output on the
+    // same terminal line and is scroll-safe (all relative).
     const markdown =
       "No `\\x1b[2K` or `\\r` sequences in the streamed text. The ANSI colour codes remain (intentional — those are static style codes from yoctocolors, not cursor-control sequences).\n";
     const splitAt = 134;

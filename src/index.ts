@@ -142,7 +142,8 @@ export function createHighlighter(options?: Options): Highlighter {
     return parseInline(line);
   }
 
-  let previousPartialLineCount = 0;
+  let previousPartialVisibleLen = 0;
+  let previousPartialWrappedLines = 0;
 
   // Strip ANSI escapes to measure visible character width
   function visibleLength(s: string): number {
@@ -150,29 +151,31 @@ export function createHighlighter(options?: Options): Highlighter {
     return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length;
   }
 
-  // Count visual (wrapped) lines a rendered string occupies.
-  function countVisualLines(rendered: string): number {
-    const len = visibleLength(rendered);
-    if (len === 0) return 1;
-    return Math.ceil(len / terminalColumns);
-  }
-
-  // Erase the previous partial render using the standard eraseLines
-  // pattern (same as log-update / ansi-escapes).  All movement is
-  // relative so it is immune to terminal scroll, unlike DECSC/DECRC.
-  //
-  //   eraseLines(n) = for each line: eraseLine + cursorUp, then cursorLeft
-  //   eraseLine  = \x1b[2K   (erase entire line)
-  //   cursorUp   = \x1b[1A
-  //   cursorLeft = \x1b[G    (move to column 1)
-  function eraseLines(count: number): string {
-    if (count <= 0) return "";
-    let seq = "";
-    for (let i = 0; i < count; i++) {
-      seq += "\x1b[2K"; // erase entire current line
-      if (i < count - 1) seq += "\x1b[1A"; // move up (skip on last)
+  // Erase the previous partial render by moving back over exactly the
+  // characters we wrote and clearing from cursor to end of screen.
+  // This preserves any text before our output on the same terminal line
+  // (e.g. a prompt prefix), unlike \x1b[2K which erases the whole line.
+  function erasePreviousPartial(): string {
+    if (previousPartialVisibleLen <= 0 && previousPartialWrappedLines <= 0) {
+      return "";
     }
-    seq += "\x1b[G"; // move cursor to column 1
+    let seq = "";
+    // Move cursor up for any extra wrapped lines beyond the first
+    if (previousPartialWrappedLines > 1) {
+      seq += `\x1b[${previousPartialWrappedLines - 1}A`;
+    }
+    // Move cursor back to the start of our partial output.
+    // On the first visual line, the column offset is where our text began.
+    // We compute how many columns are on the first line of our partial.
+    const firstLineLen =
+      previousPartialWrappedLines > 1
+        ? terminalColumns
+        : previousPartialVisibleLen;
+    if (firstLineLen > 0) {
+      seq += `\x1b[${firstLineLen}D`;
+    }
+    // Erase from cursor to end of screen
+    seq += "\x1b[0J";
     return seq;
   }
 
@@ -185,7 +188,7 @@ export function createHighlighter(options?: Options): Highlighter {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      let out = eraseLines(previousPartialLineCount);
+      let out = erasePreviousPartial();
 
       if (lines.length > 0) {
         out += `${lines.map((line) => parseLine(line, false)).join("\n")}\n`;
@@ -194,9 +197,13 @@ export function createHighlighter(options?: Options): Highlighter {
       if (buffer.length > 0) {
         const rendered = parseLine(buffer, true);
         out += rendered;
-        previousPartialLineCount = countVisualLines(rendered);
+        const vLen = visibleLength(rendered);
+        previousPartialVisibleLen = vLen;
+        previousPartialWrappedLines =
+          vLen === 0 ? 0 : Math.ceil(vLen / terminalColumns);
       } else {
-        previousPartialLineCount = 0;
+        previousPartialVisibleLen = 0;
+        previousPartialWrappedLines = 0;
       }
 
       return out;
@@ -205,12 +212,10 @@ export function createHighlighter(options?: Options): Highlighter {
       if (buffer.length > 0) {
         const out = parseLine(buffer, false);
         buffer = "";
-        if (previousPartialLineCount > 0) {
-          const prefix = eraseLines(previousPartialLineCount);
-          previousPartialLineCount = 0;
-          return prefix + out;
-        }
-        return out;
+        const prefix = erasePreviousPartial();
+        previousPartialVisibleLen = 0;
+        previousPartialWrappedLines = 0;
+        return prefix + out;
       }
       return "";
     },
