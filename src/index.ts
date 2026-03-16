@@ -142,8 +142,7 @@ export function createHighlighter(options?: Options): Highlighter {
     return parseInline(line);
   }
 
-  let previousPartialVisibleLen = 0;
-  let previousPartialWrappedLines = 0;
+  let previousPartialRendered = "";
 
   // Strip ANSI escapes to measure visible character width
   function visibleLength(s: string): number {
@@ -156,21 +155,18 @@ export function createHighlighter(options?: Options): Highlighter {
   // This preserves any text before our output on the same terminal line
   // (e.g. a prompt prefix), unlike \x1b[2K which erases the whole line.
   function erasePreviousPartial(): string {
-    if (previousPartialVisibleLen <= 0 && previousPartialWrappedLines <= 0) {
+    if (previousPartialRendered.length === 0) {
       return "";
     }
+    const vLen = visibleLength(previousPartialRendered);
+    const wrappedLines = vLen === 0 ? 0 : Math.ceil(vLen / terminalColumns);
     let seq = "";
     // Move cursor up for any extra wrapped lines beyond the first
-    if (previousPartialWrappedLines > 1) {
-      seq += `\x1b[${previousPartialWrappedLines - 1}A`;
+    if (wrappedLines > 1) {
+      seq += `\x1b[${wrappedLines - 1}A`;
     }
     // Move cursor back to the start of our partial output.
-    // On the first visual line, the column offset is where our text began.
-    // We compute how many columns are on the first line of our partial.
-    const firstLineLen =
-      previousPartialWrappedLines > 1
-        ? terminalColumns
-        : previousPartialVisibleLen;
+    const firstLineLen = wrappedLines > 1 ? terminalColumns : vLen;
     if (firstLineLen > 0) {
       seq += `\x1b[${firstLineLen}D`;
     }
@@ -188,34 +184,56 @@ export function createHighlighter(options?: Options): Highlighter {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      let out = erasePreviousPartial();
+      let out = "";
 
+      // If we have completed lines, we must erase the previous partial
+      // (which was the in-progress version of the first completed line)
+      // and re-render all completed lines plus the new partial.
       if (lines.length > 0) {
+        out += erasePreviousPartial();
         out += `${lines.map((line) => parseLine(line, false)).join("\n")}\n`;
+        previousPartialRendered = "";
       }
 
       if (buffer.length > 0) {
         const rendered = parseLine(buffer, true);
-        out += rendered;
-        const vLen = visibleLength(rendered);
-        previousPartialVisibleLen = vLen;
-        previousPartialWrappedLines =
-          vLen === 0 ? 0 : Math.ceil(vLen / terminalColumns);
+        // Append-only optimisation: if the new render starts with the
+        // previous render, just emit the new suffix — no erase needed.
+        // This avoids flicker and sidesteps character-width measurement
+        // for the common case of appending plain text.
+        if (
+          lines.length === 0 &&
+          previousPartialRendered.length > 0 &&
+          rendered.startsWith(previousPartialRendered)
+        ) {
+          out += rendered.slice(previousPartialRendered.length);
+        } else {
+          // Render changed (e.g. inline formatting closed) — full redraw
+          if (lines.length === 0) {
+            out += erasePreviousPartial();
+          }
+          out += rendered;
+        }
+        previousPartialRendered = rendered;
       } else {
-        previousPartialVisibleLen = 0;
-        previousPartialWrappedLines = 0;
+        previousPartialRendered = "";
       }
 
       return out;
     },
     end(): string {
       if (buffer.length > 0) {
-        const out = parseLine(buffer, false);
+        const rendered = parseLine(buffer, false);
         buffer = "";
-        const prefix = erasePreviousPartial();
-        previousPartialVisibleLen = 0;
-        previousPartialWrappedLines = 0;
-        return prefix + out;
+        // If the final render matches the partial, nothing to redo.
+        // If it differs (e.g. unclosed bold emitted as plain), erase and redraw.
+        let out = "";
+        if (rendered !== previousPartialRendered) {
+          out += erasePreviousPartial();
+          out += rendered;
+        }
+        previousPartialRendered = "";
+        return out;
       }
       return "";
     },
