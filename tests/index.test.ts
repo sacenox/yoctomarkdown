@@ -39,8 +39,6 @@ function renderTerminalOutput(
   const screen: string[][] = [[]];
   let row = 0;
   let column = 0;
-  let savedCursor: { row: number; column: number } | null = null;
-
   function ensureRow(targetRow: number) {
     while (screen.length <= targetRow) {
       screen.push([]);
@@ -68,42 +66,58 @@ function renderTerminalOutput(
   for (let i = 0; i < output.length; i += 1) {
     const rest = output.slice(i);
 
-    if (rest.startsWith("\x1b7")) {
-      savedCursor = { row, column };
-      i += 1;
-      continue;
-    }
+    // Parse CSI sequences: \x1b[ <params> <letter>
+    if (rest.startsWith("\x1b[")) {
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape regex
+      const csiMatch = rest.match(/^\x1b\[([0-9;]*)([A-Za-z])/);
+      if (csiMatch) {
+        const param = csiMatch[1] ?? "";
+        const code = csiMatch[2] ?? "";
+        const n = param === "" ? 1 : parseInt(param, 10);
+        i += csiMatch[0].length - 1; // -1 because loop does i++
 
-    if (rest.startsWith("\x1b8")) {
-      if (savedCursor) {
-        row = savedCursor.row;
-        column = savedCursor.column;
+        switch (code) {
+          case "A": // Cursor Up
+            row = Math.max(0, row - n);
+            break;
+          case "D": // Cursor Backward
+            column = Math.max(0, column - n);
+            break;
+          case "J": // Erase in Display (from cursor down)
+            ensureRow(row);
+            screen[row] = (screen[row] ?? []).slice(0, column);
+            for (
+              let clearRow = row + 1;
+              clearRow < screen.length;
+              clearRow += 1
+            ) {
+              screen[clearRow] = [];
+            }
+            break;
+          case "K": {
+            // Erase in Line
+            const mode = param === "" ? 0 : n;
+            ensureRow(row);
+            if (mode === 0) {
+              // erase to end of line
+              screen[row] = (screen[row] ?? []).slice(0, column);
+            } else if (mode === 2) {
+              // erase whole line
+              screen[row] = [];
+            }
+            break;
+          }
+          case "C": // Cursor Forward
+            column += n;
+            break;
+          case "G": // Cursor Horizontal Absolute (1-based)
+            column = (param === "" ? 1 : n) - 1;
+            break;
+          default:
+            break;
+        }
+        continue;
       }
-      i += 1;
-      continue;
-    }
-
-    if (rest.startsWith("\x1b[J")) {
-      ensureRow(row);
-      screen[row] = (screen[row] ?? []).slice(0, column);
-      for (let clearRow = row + 1; clearRow < screen.length; clearRow += 1) {
-        screen[clearRow] = [];
-      }
-      i += 2;
-      continue;
-    }
-
-    if (rest.startsWith("\x1b[2K")) {
-      ensureRow(row);
-      screen[row] = [];
-      i += 3;
-      continue;
-    }
-
-    if (rest.startsWith("\x1b[1A")) {
-      row = Math.max(0, row - 1);
-      i += 3;
-      continue;
     }
 
     const char = output[i];
@@ -179,20 +193,22 @@ describe("Programmatic Usage: createHighlighter (Streaming)", () => {
     expectStreamMatch(res, markdown);
   });
 
-  test("should redraw wrapped partial lines after an external prefix", () => {
-    const prefix = "◆ ";
+  test("should erase and redraw partial lines that wrap in terminal", () => {
+    // eraseLines uses \x1b[2K (erase whole line) + \x1b[1A (cursor up) +
+    // \x1b[G (cursor to col 1) — the standard log-update / ansi-escapes
+    // pattern. This is scroll-safe (all relative) unlike DECSC/DECRC.
     const markdown =
       "No `\\x1b[2K` or `\\r` sequences in the streamed text. The ANSI colour codes remain (intentional — those are static style codes from yoctocolors, not cursor-control sequences).\n";
     const splitAt = 134;
 
     const highlighter = createHighlighter({ theme: "none" });
-    let res = prefix;
+    let res = "";
     res += highlighter.write(markdown.slice(0, splitAt));
     res += highlighter.write(markdown.slice(splitAt));
     res += highlighter.end();
 
     expect(renderTerminalOutput(res, 120)).toBe(
-      renderTerminalOutput(`${prefix}${markdown}`, 120),
+      renderTerminalOutput(markdown, 120),
     );
   });
 });

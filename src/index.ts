@@ -12,6 +12,20 @@ export interface Highlighter {
   end(): string;
 }
 
+function resolveColumns(options?: Options): number {
+  const wrap = options?.wordWrap ?? "auto";
+  if (typeof wrap === "number" && wrap > 0) return wrap;
+  if (wrap === "auto") {
+    try {
+      return process.stdout.columns || 80;
+    } catch {
+      return 80;
+    }
+  }
+  // wordWrap === 0 (disabled) – use a large value so visual-line count stays 1
+  return Number.MAX_SAFE_INTEGER;
+}
+
 function resolveTheme(options?: Options): Theme {
   const t = options?.theme || "16";
   if (typeof t === "string") {
@@ -28,6 +42,7 @@ export function highlightSync(input: string, options?: Options): string {
 
 export function createHighlighter(options?: Options): Highlighter {
   const theme = resolveTheme(options);
+  const terminalColumns = resolveColumns(options);
   let buffer = "";
   let inCodeBlock = false;
 
@@ -127,14 +142,38 @@ export function createHighlighter(options?: Options): Highlighter {
     return parseInline(line);
   }
 
-  let hasPartial = false;
+  let previousPartialLineCount = 0;
 
-  function redrawPartialPrefix(): string {
-    return hasPartial ? "\x1b8\x1b[J" : "";
+  // Strip ANSI escapes to measure visible character width
+  function visibleLength(s: string): number {
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape regex
+    return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length;
   }
 
-  function renderPartial(line: string, isPartial: boolean): string {
-    return `\x1b7${parseLine(line, isPartial)}`;
+  // Count visual (wrapped) lines a rendered string occupies.
+  function countVisualLines(rendered: string): number {
+    const len = visibleLength(rendered);
+    if (len === 0) return 1;
+    return Math.ceil(len / terminalColumns);
+  }
+
+  // Erase the previous partial render using the standard eraseLines
+  // pattern (same as log-update / ansi-escapes).  All movement is
+  // relative so it is immune to terminal scroll, unlike DECSC/DECRC.
+  //
+  //   eraseLines(n) = for each line: eraseLine + cursorUp, then cursorLeft
+  //   eraseLine  = \x1b[2K   (erase entire line)
+  //   cursorUp   = \x1b[1A
+  //   cursorLeft = \x1b[G    (move to column 1)
+  function eraseLines(count: number): string {
+    if (count <= 0) return "";
+    let seq = "";
+    for (let i = 0; i < count; i++) {
+      seq += "\x1b[2K"; // erase entire current line
+      if (i < count - 1) seq += "\x1b[1A"; // move up (skip on last)
+    }
+    seq += "\x1b[G"; // move cursor to column 1
+    return seq;
   }
 
   return {
@@ -146,17 +185,18 @@ export function createHighlighter(options?: Options): Highlighter {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
 
-      let out = redrawPartialPrefix();
+      let out = eraseLines(previousPartialLineCount);
 
       if (lines.length > 0) {
         out += `${lines.map((line) => parseLine(line, false)).join("\n")}\n`;
       }
 
       if (buffer.length > 0) {
-        out += renderPartial(buffer, true);
-        hasPartial = true;
+        const rendered = parseLine(buffer, true);
+        out += rendered;
+        previousPartialLineCount = countVisualLines(rendered);
       } else {
-        hasPartial = false;
+        previousPartialLineCount = 0;
       }
 
       return out;
@@ -165,10 +205,10 @@ export function createHighlighter(options?: Options): Highlighter {
       if (buffer.length > 0) {
         const out = parseLine(buffer, false);
         buffer = "";
-        if (hasPartial) {
-          const redrawPrefix = redrawPartialPrefix();
-          hasPartial = false;
-          return redrawPrefix + out;
+        if (previousPartialLineCount > 0) {
+          const prefix = eraseLines(previousPartialLineCount);
+          previousPartialLineCount = 0;
+          return prefix + out;
         }
         return out;
       }
