@@ -4,3 +4,4 @@
 - Run `bun run format` to format code using prettier.
 - Clean temporary files before commiting.
 - Use convential commits message formatting.
+- It's important to keep streaming rendering as fast as possible, this means char by char, not buffering and waiting for characters.

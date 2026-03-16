@@ -12,7 +12,7 @@ YoctoMarkdown MUST:
 - process input incrementally
 - render supported Markdown syntax as ANSI-styled terminal text
 - preserve unsupported or malformed Markdown as plain text
-- avoid buffering the full document when used in streaming mode
+- avoid buffering the document when used in streaming mode
 
 YoctoMarkdown is not a full CommonMark implementation.
 It supports a small, practical subset intended for terminal display.
