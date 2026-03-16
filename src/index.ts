@@ -1,3 +1,5 @@
+import stripAnsi from "strip-ansi";
+import stringWidth from "string-width";
 import { type Theme, themes } from "./themes";
 
 export interface Options {
@@ -43,6 +45,7 @@ export function highlightSync(input: string, options?: Options): string {
 export function createHighlighter(options?: Options): Highlighter {
   const theme = resolveTheme(options);
   const terminalColumns = resolveColumns(options);
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
   let buffer = "";
   let inCodeBlock = false;
 
@@ -144,10 +147,25 @@ export function createHighlighter(options?: Options): Highlighter {
 
   let previousPartialRendered = "";
 
-  // Strip ANSI escapes to measure visible character width
-  function visibleLength(s: string): number {
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape regex
-    return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").length;
+  // Compute actual terminal line count and last-line column,
+  // simulating how the terminal wraps wide characters.
+  // A 2-column char at the last column causes a gap + wrap.
+  function terminalLayout(s: string): { lines: number; lastCol: number } {
+    const stripped = stripAnsi(s);
+    if (stripped.length === 0) return { lines: 1, lastCol: 0 };
+    let lines = 1;
+    let col = 0;
+    for (const { segment } of segmenter.segment(stripped)) {
+      const w = stringWidth(segment);
+      if (w === 0) continue;
+      if (col + w > terminalColumns) {
+        lines++;
+        col = w;
+      } else {
+        col += w;
+      }
+    }
+    return { lines, lastCol: col };
   }
 
   // Erase the previous partial render by moving back over exactly the
@@ -158,17 +176,15 @@ export function createHighlighter(options?: Options): Highlighter {
     if (previousPartialRendered.length === 0) {
       return "";
     }
-    const vLen = visibleLength(previousPartialRendered);
-    const wrappedLines = vLen === 0 ? 0 : Math.ceil(vLen / terminalColumns);
+    const { lines, lastCol } = terminalLayout(previousPartialRendered);
     let seq = "";
     // Move cursor up for any extra wrapped lines beyond the first
-    if (wrappedLines > 1) {
-      seq += `\x1b[${wrappedLines - 1}A`;
+    if (lines > 1) {
+      seq += `\x1b[${lines - 1}A`;
     }
-    // Move cursor back to the start of our partial output.
-    const firstLineLen = wrappedLines > 1 ? terminalColumns : vLen;
-    if (firstLineLen > 0) {
-      seq += `\x1b[${firstLineLen}D`;
+    // Move cursor back to start of our partial output
+    if (lastCol > 0) {
+      seq += `\x1b[${lastCol}D`;
     }
     // Erase from cursor to end of screen
     seq += "\x1b[0J";

@@ -90,6 +90,37 @@ async function main() {
     "A: ",
     "A **tiny** streaming markdown highlighter for the terminal.",
   );
+
+  // 5. Unicode width edge cases — would have been broken before string-width
+  // CJK wide characters (each takes 2 cells)
+  await streamWithPrefix(
+    "CJK: ",
+    "日本語のテスト — **太字** and `コード` inline.",
+  );
+
+  // Emoji sequences (ZWJ family = 1 grapheme, 2 cells; skin-toned emoji)
+  await streamWithPrefix(
+    "Emoji: ",
+    "Family 👨‍👩‍👧‍👦 and thumbs 👍🏽 and flag 🇯🇵 with **bold** after.",
+  );
+
+  // Ambiguous-width characters (★ ① ☆ ♨ — EAW category "A")
+  await streamWithPrefix(
+    "Ambiguous: ",
+    "Stars ★☆★☆★ and circled ①②③④⑤ and `♨ hotspring` done.",
+  );
+
+  // Combining marks (café with combining é = 4 visible chars)
+  await streamWithPrefix(
+    "Combining: ",
+    "A cafe\u0301 with re\u0301sume\u0301 — **nai\u0308ve** text with `combining` marks.",
+  );
+
+  // Mixed: CJK + emoji + ambiguous + wrapping
+  await streamWithPrefix(
+    "Mixed: ",
+    "漢字と★emoji👨‍👩‍👧‍👦とambiguous①②③が混ざった**長い文**で折り返しテスト。This line mixes scripts to stress-test `visibleLength` on wrapped redraws.",
+  );
 }
 
 main();
