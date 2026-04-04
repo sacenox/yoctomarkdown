@@ -1,6 +1,10 @@
 import stripAnsi from "strip-ansi";
 import stringWidth from "string-width";
 import { type Theme, themes } from "./themes";
+import { type InlineSpan, parseLineToken } from "./tokenizer";
+
+export type { InlineSpan, BlockToken, TokenHighlighter } from "./tokenizer";
+export { tokenize, createTokenizer } from "./tokenizer";
 
 export interface Options {
   theme?: "16" | "256" | "truecolor" | "minimal" | "none" | Theme;
@@ -36,6 +40,97 @@ function resolveTheme(options?: Options): Theme {
   return t as Theme;
 }
 
+// ── Token → ANSI rendering ──────────────────────────────────────────
+
+function renderSpans(spans: InlineSpan[], theme: Theme): string {
+  let result = "";
+  for (const span of spans) {
+    switch (span.type) {
+      case "text":
+        result += span.content;
+        break;
+      case "bold":
+        result += theme.bold(`**${span.content}**`);
+        break;
+      case "italic":
+        result += theme.italic(`*${span.content}*`);
+        break;
+      case "code":
+        result += theme.code(`\`${span.content}\``);
+        break;
+      case "link":
+        result += theme.link(`[${span.text}](${span.url})`);
+        break;
+    }
+  }
+  return result;
+}
+
+function renderLine(
+  line: string,
+  inCodeBlock: boolean,
+  isPartial: boolean,
+  theme: Theme,
+): { rendered: string; newCodeBlockState: boolean } {
+  // Inside a code block — render as code
+  if (inCodeBlock) {
+    const closing = line.trim().startsWith("```");
+    return {
+      rendered: theme.codeBlock(line),
+      newCodeBlockState: !(closing && !isPartial),
+    };
+  }
+
+  // Code block opening fence
+  if (line.trim().startsWith("```")) {
+    return {
+      rendered: theme.codeBlock(line),
+      newCodeBlockState: !isPartial,
+    };
+  }
+
+  // For non-code lines, tokenize and render
+  const token = parseLineToken(line, false);
+  let rendered: string;
+  switch (token.type) {
+    case "hr":
+      rendered = theme.hr(line);
+      break;
+    case "heading": {
+      const hashes = "#".repeat(token.depth);
+      rendered = theme.heading(`${hashes} ${renderSpans(token.spans, theme)}`);
+      break;
+    }
+    case "blockquote": {
+      const bqMatch = line.match(/^(>\s+)/);
+      rendered =
+        theme.blockquote(bqMatch?.[1] ?? "> ") +
+        renderSpans(token.spans, theme);
+      break;
+    }
+    case "list_item": {
+      const markerMatch = line.match(/^((?:[-*]|\d+\.)\s+)/);
+      rendered =
+        theme.listMarker(markerMatch?.[1] ?? "") +
+        renderSpans(token.spans, theme);
+      break;
+    }
+    case "blank":
+      rendered = "";
+      break;
+    case "paragraph":
+      rendered = renderSpans(token.spans, theme);
+      break;
+    default:
+      rendered = line;
+      break;
+  }
+
+  return { rendered, newCodeBlockState: false };
+}
+
+// ── Public API ──────────────────────────────────────────────────────
+
 export function highlightSync(input: string, options?: Options): string {
   const highlighter = createHighlighter(options);
   const out = highlighter.write(input);
@@ -49,100 +144,15 @@ export function createHighlighter(options?: Options): Highlighter {
   let buffer = "";
   let inCodeBlock = false;
 
-  function parseInline(text: string): string {
-    let result = "";
-    let i = 0;
-    while (i < text.length) {
-      if (text.startsWith("`", i) && !text.startsWith("``", i)) {
-        const end = text.indexOf("`", i + 1);
-        if (end !== -1) {
-          result += theme.code(`\`${text.slice(i + 1, end)}\``);
-          i = end + 1;
-          continue;
-        }
-      }
-
-      if (text.startsWith("**", i)) {
-        const end = text.indexOf("**", i + 2);
-        if (end !== -1) {
-          result += theme.bold(`**${text.slice(i + 2, end)}**`);
-          i = end + 2;
-          continue;
-        }
-      }
-
-      if (text.startsWith("*", i) && !text.startsWith("**", i)) {
-        const end = text.indexOf("*", i + 1);
-        if (end !== -1 && !text.startsWith("**", end)) {
-          result += theme.italic(`*${text.slice(i + 1, end)}*`);
-          i = end + 1;
-          continue;
-        }
-      }
-
-      if (text.startsWith("[", i)) {
-        const bracketEnd = text.indexOf("]", i + 1);
-        if (bracketEnd !== -1 && text.charAt(bracketEnd + 1) === "(") {
-          const parenEnd = text.indexOf(")", bracketEnd + 2);
-          if (parenEnd !== -1) {
-            result += theme.link(
-              `[${text.slice(i + 1, bracketEnd)}](${text.slice(bracketEnd + 2, parenEnd)})`,
-            );
-            i = parenEnd + 1;
-            continue;
-          }
-        }
-      }
-
-      result += text[i];
-      i++;
-    }
-
-    return result;
-  }
-
   function parseLine(line: string, isPartial: boolean): string {
-    if (inCodeBlock) {
-      if (line.trim().startsWith("```")) {
-        if (!isPartial) inCodeBlock = false;
-        return theme.codeBlock(line);
-      }
-      return theme.codeBlock(line);
-    }
-
-    if (line.trim().startsWith("```")) {
-      if (!isPartial) inCodeBlock = true;
-      return theme.codeBlock(line);
-    }
-
-    const hrMatch = line.trim().match(/^(?:-{3,}|\*{3,}|_{3,})$/);
-    if (hrMatch) {
-      return theme.hr(line);
-    }
-
-    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
-    if (headingMatch) {
-      const hashes = headingMatch[1] ?? "";
-      const text = headingMatch[2] ?? "";
-      return theme.heading(`${hashes} ${parseInline(text)}`);
-    }
-
-    const bqMatch = line.match(/^(>\s+)(.*)$/);
-    if (bqMatch) {
-      return theme.blockquote(bqMatch[1] ?? "") + parseInline(bqMatch[2] ?? "");
-    }
-
-    const ulMatch = line.match(/^([-*]\s+)(.*)$/);
-    if (ulMatch) {
-      return theme.listMarker(ulMatch[1] ?? "") + parseInline(ulMatch[2] ?? "");
-    }
-
-    const olMatch = line.match(/^(\d+\.\s+)(.*)$/);
-    if (olMatch) {
-      return theme.listMarker(olMatch[1] ?? "") + parseInline(olMatch[2] ?? "");
-    }
-
-    return parseInline(line);
+    const { rendered, newCodeBlockState } = renderLine(
+      line,
+      inCodeBlock,
+      isPartial,
+      theme,
+    );
+    inCodeBlock = newCodeBlockState;
+    return rendered;
   }
 
   let previousPartialRendered = "";

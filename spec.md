@@ -160,6 +160,55 @@ Behavior:
 - `write()` returns rendered output for the provided chunk
 - `end()` flushes any remaining buffered text
 
+## Token API
+
+The library MUST also expose an ANSI-free token API with **zero runtime dependencies**.
+
+### Token types
+
+```ts
+type InlineSpan =
+  | { type: "text"; content: string }
+  | { type: "bold"; content: string }
+  | { type: "italic"; content: string }
+  | { type: "code"; content: string }
+  | { type: "link"; text: string; url: string };
+
+type BlockToken =
+  | { type: "heading"; depth: 1 | 2 | 3; spans: InlineSpan[] }
+  | { type: "paragraph"; spans: InlineSpan[] }
+  | { type: "code_block"; lang: string; content: string }
+  | { type: "list_item"; ordered: boolean; index: number; spans: InlineSpan[] }
+  | { type: "blockquote"; spans: InlineSpan[] }
+  | { type: "hr" }
+  | { type: "blank" };
+```
+
+### Functions
+
+```ts
+tokenize(input: string): BlockToken[]
+createTokenizer(): TokenHighlighter
+```
+
+```ts
+interface TokenHighlighter {
+  write(chunk: string | Uint8Array): BlockToken[];
+  end(): BlockToken[];
+}
+```
+
+Behavior:
+
+- `tokenize()` tokenizes a complete Markdown string into block tokens
+- `createTokenizer()` returns an incremental tokenizer for streaming use
+- `write()` returns completed block tokens for the provided chunk
+- `end()` flushes any remaining buffered text and unclosed constructs
+- Streaming `write()` emits completed block tokens immediately; only the current incomplete line is buffered
+- Unclosed fenced code blocks emit as `code_block` on `end()`
+- Unclosed inline formatting falls back to plain `text` spans
+- Inline code has priority over other inline formatting
+
 ## CLI
 
 The CLI command is:
